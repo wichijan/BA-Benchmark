@@ -1,0 +1,986 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="shortcut icon" href="data:image/x-icon;," type="image/x-icon"> 
+    <title>Rendering Benchmark</title>
+    <script src="./js/tailwind.js"></script>
+    <script src="./js/d3.v7.min.js"></script>
+    <script src="./js/vis-network.min.js"></script>
+    <script src="./js/sigma.min.js"></script>
+    <script src="./js/graphology.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="./js/cytoscape.min.js"></script>
+    <script src="./js/echarts.min.js"></script>
+    <script src="https://gw.alipayobjects.com/os/lib/antv/g6/4.6.3/dist/g6.min.js"></script>
+    <script src="./js/chart.js"></script>
+  </head>
+  <body class="bg-gray-100 text-gray-900 p-6">
+    <div class="max-w-6xl mx-auto">
+      <h1 class="text-3xl font-bold mb-6">Rendering Benchmark</h1>
+      <div class="flex flex-wrap gap-4 items-end mb-4">
+        <div>
+          <label for="node-count" class="block text-sm font-medium text-gray-700 mb-1">Number of Nodes:</label>
+          <input
+            type="number"
+            id="node-count"
+            value="100"
+            min="10"
+            step="10"
+            class="border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring focus:border-blue-300"
+          />
+        </div>
+        <div>
+          <label for="edge-count" class="block text-sm font-medium text-gray-700 mb-1">Number of Edges:</label>
+          <input
+            type="number"
+            id="edge-count"
+            value="200"
+            min="10"
+            step="10"
+            class="border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring focus:border-blue-300"
+          />
+        </div>
+        <div>
+          <label for="tries-count" class="block text-sm font-medium text-gray-700 mb-1">Number of Tries:</label>
+          <input
+            type="number"
+            id="tries-count"
+            value="10"
+            min="1"
+            step="1"
+            class="border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring focus:border-blue-300"
+          />
+        </div>
+        <div>
+
+          <!-- button for enable dummy data which are all connected -->
+          <input type="checkbox" id="dummy-data" name="dummy-data" value="dummy-data" checked>
+          <label for="dummy-data">Edges are random</label>
+
+        </div>
+        <button
+          onclick="runBenchmarks()"
+          class="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded shadow"
+        >
+          Start Benchmark
+        </button>
+      </div>
+      <div id="iteration-counter" class="text-center text-xl font-bold mb-4"></div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mb-8">
+        <div class="flex flex-col items-center">
+          <h2 class="text-lg font-bold mb-2">D3.js</h2>
+          <div id="d3-container" class="w-full h-80 border border-gray-300 rounded bg-white shadow"></div>
+        </div>
+        <div class="flex flex-col items-center">
+          <h2 class="text-lg font-bold mb-2">Vis.js</h2>
+          <div id="vis-container" class="w-full h-80 border border-gray-300 rounded bg-white shadow"></div>
+        </div>
+        <div class="flex flex-col items-center">
+          <h2 class="text-lg font-bold mb-2">Sigma.js</h2>
+          <div id="sigma-container" class="w-full h-80 border border-gray-300 rounded bg-white shadow"></div>
+        </div>
+        <div class="flex flex-col items-center">
+          <h2 class="text-lg font-bold mb-2">Three.js</h2>
+          <div id="three-container" class="w-full h-80 border border-gray-300 rounded bg-white shadow"></div>
+        </div>
+        <div class="flex flex-col items-center">
+          <h2 class="text-lg font-bold mb-2">Cytoscape.js</h2>
+          <div id="cytoscape-container" class="w-full h-80 border border-gray-300 rounded bg-white shadow"></div>
+        </div>
+        <div class="flex flex-col items-center">
+          <h2 class="text-lg font-bold mb-2">ECharts</h2>
+          <div id="echarts-container" class="w-full h-80 border border-gray-300 rounded bg-white shadow"></div>
+        </div>
+        <div class="flex flex-col items-center">
+          <h2 class="text-lg font-bold mb-2">G6</h2>
+          <div id="g6-container" class="w-full h-80 border border-gray-300 rounded bg-white shadow"></div>
+        </div>
+      </div>
+      <div class="bg-white p-4 rounded shadow">
+        <canvas id="benchmarkChart" class="w-full"></canvas>
+      </div>
+
+      <div class="bg-white p-4 mt-12 rounded shadow">
+        <canvas id="callOrderChart" class="w-full"></canvas>
+      </div>
+      
+      <div id="statsTable" class="bg-white p-4 mt-8 rounded shadow"></div>
+
+    </div>
+
+    <script>
+      const tCriticalLookup = {
+        1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571,
+        6: 2.447, 7: 2.365, 8: 2.306, 9: 2.262, 10: 2.228,
+        11: 2.201, 12: 2.179, 13: 2.160, 14: 2.145, 15: 2.131,
+        16: 2.120, 17: 2.110, 18: 2.101, 19: 2.093, 20: 2.086,
+        21: 2.080, 22: 2.074, 23: 2.069, 24: 2.064, 25: 2.060,
+        26: 2.056, 27: 2.052, 28: 2.048, 29: 2.045, 30: 2.042
+      };
+
+      function getTCritical(n) {
+        const df = n - 1;
+        if (df <= 30) {
+          return tCriticalLookup[df] || 1.96;
+        }
+        return 1.96;
+      }
+
+      function median(sortedArr) {
+        const len = sortedArr.length;
+        const mid = Math.floor(len / 2);
+        if (len % 2 === 0) {
+          return (sortedArr[mid - 1] + sortedArr[mid]) / 2;
+        }
+        return sortedArr[mid];
+      }
+
+      function computeQuartiles(sortedArr) {
+        const len = sortedArr.length;
+        const mid = Math.floor(len / 2);
+        let lowerHalf = sortedArr.slice(0, mid);
+        let upperHalf = (len % 2 === 0) ? sortedArr.slice(mid) : sortedArr.slice(mid + 1);
+        return {
+          q1: median(lowerHalf),
+          q3: median(upperHalf)
+        };
+      }
+
+      function calculateStats(times) {
+        const n = times.length;
+        if (n === 0) return { n: 0, avg: 0, median: 0, q1: 0, q3: 0, min: 0, max: 0, stdDev: 0, ciLower: 0, ciUpper: 0 };
+
+        const sum = times.reduce((a, b) => a + b, 0);
+        const avg = sum / n;
+        const min = Math.min(...times);
+        const max = Math.max(...times);
+        const variance = times.reduce((acc, val) => acc + Math.pow(val - avg, 2), 0) / n;
+        const stdDev = Math.sqrt(variance);
+
+        const sortedTimes = [...times].sort((a, b) => a - b);
+        const med = median(sortedTimes);
+        const { q1, q3 } = computeQuartiles(sortedTimes);
+
+        let ciLower = NaN, ciUpper = NaN;
+        if (n > 1) {
+          const tCritical = getTCritical(n);
+          const margin = tCritical * (stdDev / Math.sqrt(n));
+          ciLower = avg - margin;
+          ciUpper = avg + margin;
+        }
+
+        return { n, avg, median: med, q1, q3, min, max, stdDev, ciLower, ciUpper };
+      }
+
+      let iterationOrder = [];
+      let NUM_NODES = 100;
+      let NUM_EDGES = 200;
+      let edgesRandom = true;
+      let chartInstance = null;
+      let chartInstance2 = null;
+      let finalD3 = null;
+      let finalVis = null;
+      let finalSigma = null;
+      let finalThree = null;
+      let finalCytoscape = null;
+      let finalECharts = null;
+      let finalG6 = null;
+
+      function generateGraphData(width = 0, height = 0) {
+        edgesRandom = document.getElementById("dummy-data").checked;
+        if(edgesRandom){
+          const nodes = Array.from({ length: NUM_NODES }, (_, i) => ({
+            id: String(i),
+            label: `Node ${i}`,
+            x: Math.random() * width,
+            y: Math.random() * height,
+          }));
+          const edges = Array.from({ length: NUM_EDGES }, () => ({
+            from: String(Math.floor(Math.random() * NUM_NODES)),
+            to: String(Math.floor(Math.random() * NUM_NODES)), 
+          }));
+          return { nodes, edges };
+        } else {
+          const nodes = Array.from({ length: NUM_NODES }, (_, i) => ({
+            id: String(i),
+            label: `Node ${i}`,
+            x: Math.random() * width,
+            y: Math.random() * height,
+          }));
+
+          const edges = Array.from({ length: NUM_EDGES }, (_, i) => ({
+            from: String(i % NUM_NODES),
+            to: String((i + 1) % NUM_NODES),
+          }));
+
+          return { nodes, edges };
+        }
+      }
+
+
+      async function benchmarkD3() {
+        return new Promise((resolve) => {
+          const container = document.getElementById("d3-container");
+          const width = container.clientWidth || 800;
+          const height = container.clientHeight || 600;
+          container.innerHTML = "";
+          const { nodes, edges } = generateGraphData(width, height);
+
+          const start = performance.now();
+
+          const svg = d3.select(container)
+            .append("svg")
+            .attr("width", width)
+            .attr("height", height);
+
+          svg.selectAll("line").data(edges).enter().append("line")
+            .attr("x1", d => nodes[d.from].x)
+            .attr("y1", d => nodes[d.from].y)
+            .attr("x2", d => nodes[d.to].x)
+            .attr("y2", d => nodes[d.to].y)
+            .style("stroke", "#aaa");
+
+          svg.selectAll("circle").data(nodes).enter().append("circle")
+            .attr("cx", d => d.x)
+            .attr("cy", d => d.y)
+            .attr("r", 8)
+            .style("fill", "#69b3a2");
+
+          const end = performance.now();
+          svg.remove();
+          resolve(end - start);
+        });
+      }
+
+      async function benchmarkVis() {
+        return new Promise((resolve) => {
+          const container = document.getElementById("vis-container");
+          container.innerHTML = "";
+          const { nodes, edges } = generateGraphData();
+          const start = performance.now();
+          const network = new vis.Network(
+            container,
+            { nodes: new vis.DataSet(nodes), edges: new vis.DataSet(edges) },
+            { physics: true, layout: { improvedLayout: true } }
+          );
+          const end = performance.now();
+          network.destroy();
+          resolve(end - start);
+        });
+      }
+
+      async function benchmarkSigma() {
+        return new Promise((resolve) => {
+          const container = document.getElementById("sigma-container");
+          container.innerHTML = "";
+          const start = performance.now();
+          const graph = new graphology.Graph({ multi: true });
+          const { nodes, edges } = generateGraphData();
+          let canvasSize = container.getBoundingClientRect();
+          const { width, height } = canvasSize;
+          nodes.forEach((node) => graph.addNode(node.id, { label: node.label, x: Math.random() * width, y: Math.random() * height }));
+          edges.forEach((edge, index) => graph.addEdge(edge.from, edge.to));
+          const sigma = new Sigma(graph, container);
+          const end = performance.now();
+          sigma.graph.clear();
+          sigma.kill();
+          resolve(end - start);
+        });
+      }
+
+      async function benchmarkThree() {
+        return new Promise((resolve) => {
+          const container = document.getElementById("three-container");
+          container.innerHTML = "";
+          const width = container.clientWidth || 800;
+          const height = container.clientHeight || 600;
+          const { nodes, edges } = generateGraphData(width, height);
+
+          const start = performance.now();
+
+
+          const scene = new THREE.Scene();
+          const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
+
+          camera.position.z = Math.max(width, height) * 0.75;
+
+          const renderer = new THREE.WebGLRenderer({ antialias: true });
+          renderer.setSize(width, height);
+          container.appendChild(renderer.domElement);
+
+          const offsetX = width / 2;
+          const offsetY = height / 2;
+
+          const nodeGeometry = new THREE.SphereGeometry(5, 16, 16);
+          const nodeMaterial = new THREE.MeshBasicMaterial({ color: 0x69b3a2 });
+          nodes.forEach((node) => {
+            const sphere = new THREE.Mesh(nodeGeometry, nodeMaterial);
+            sphere.position.set(node.x - offsetX, node.y - offsetY, 0);
+            scene.add(sphere);
+          });
+
+          const edgeMaterial = new THREE.LineBasicMaterial({ color: 0xaaaaaa });
+          edges.forEach(edge => {
+            const from = nodes[edge.from];
+            const to = nodes[edge.to];
+            const points = [];
+            points.push(new THREE.Vector3(from.x - offsetX, from.y - offsetY, 0));
+            points.push(new THREE.Vector3(to.x - offsetX, to.y - offsetY, 0));
+            const geometry = new THREE.BufferGeometry().setFromPoints(points);
+            const line = new THREE.Line(geometry, edgeMaterial);
+            scene.add(line);
+          });
+
+          renderer.render(scene, camera);
+          const end = performance.now();
+
+          nodeGeometry.dispose();
+          edgeMaterial.dispose();
+          renderer.dispose();
+          renderer.forceContextLoss();
+          container.removeChild(renderer.domElement);
+
+          resolve(end - start);
+        });
+      }
+
+
+      async function benchmarkCytoscape() {
+        return new Promise((resolve) => {
+          const container = document.getElementById("cytoscape-container");
+          container.innerHTML = "";
+          const { nodes, edges } = generateGraphData();
+          const elements = [
+            ...nodes.map((node) => ({ data: { id: node.id.toString(), label: node.label } })),
+            ...edges.map((edge, index) => ({
+              data: {
+                id: `edge-${index}`,
+                source: edge.from.toString(),
+                target: edge.to.toString()
+              },
+            })),
+          ];
+          const start = performance.now();
+          const cy = cytoscape({
+            container: container,
+            elements: elements,
+            style: [
+              {
+                selector: "node",
+                style: {
+                  "background-color": "#0074D9",
+                  label: "data(label)",
+                  "text-valign": "center",
+                  color: "#fff",
+                },
+              },
+              {
+                selector: "edge",
+                style: { width: 2, "line-color": "#aaa" },
+              },
+            ],
+            layout: { name: "random" },
+          });
+          const end = performance.now();
+          cy.destroy();
+          resolve(end - start);
+        });
+      }
+
+      async function benchmarkECharts() {
+        return new Promise((resolve) => {
+          const container = document.getElementById("echarts-container");
+          container.innerHTML = "";
+          const { nodes, edges } = generateGraphData();
+          const echartsNodes = nodes.map((node) => ({
+            id: node.id.toString(),
+            name: node.label,
+            x: Math.random() * 500,
+            y: Math.random() * 500,
+            symbolSize: 10,
+          }));
+          const echartsEdges = edges.map((edge, index) => ({
+            id: `edge-${index}`,
+            source: edge.from.toString(),
+            target: edge.to.toString(),
+          }));
+          const start = performance.now();
+          const chart = echarts.init(container);
+          const option = {
+            tooltip: {},
+            series: [
+              {
+                type: "graph",
+                layout: "none",
+                data: echartsNodes,
+                edges: echartsEdges,
+                roam: true,
+                label: { show: true },
+                lineStyle: { color: "#aaa", width: 2 },
+              },
+            ],
+          };
+          chart.setOption(option);
+          const end = performance.now();
+          chart.dispose();
+          resolve(end - start);
+        });
+      }
+
+      async function benchmarkG6() {
+        return new Promise((resolve) => {
+          const container = document.getElementById("g6-container");
+          container.innerHTML = "";
+          const width = container.clientWidth || 800;
+          const height = container.clientHeight || 600;
+          const { nodes, edges } = generateGraphData(width, height);
+
+          const nodesWithStringIds = nodes.map(node => ({
+            ...node,
+            id: node.id.toString()
+          }));
+          const edgesWithStringIds = edges.map(edge => ({
+            source: edge.from.toString(),
+            target: edge.to.toString()
+          }));
+
+          const start = performance.now();
+
+          const graph = new G6.Graph({
+            container: container,
+            width,
+            height,
+            modes: {
+              default: ['drag-canvas', 'zoom-canvas']
+            },
+            defaultNode: {
+              size: 10,
+              color: '#69b3a2'
+            },
+            defaultEdge: {
+              style: {
+                stroke: '#aaa'
+              }
+            }
+          });
+
+          const data = {
+            nodes: nodesWithStringIds,
+            edges: edgesWithStringIds
+          };
+          graph.read(data);
+
+
+          const end = performance.now();
+
+          graph.destroy();
+          resolve(end - start);
+        });
+      }
+
+
+      function renderFinalD3() {
+        const container = document.getElementById("d3-container");
+        const width = container.clientWidth || 800;
+        const height = container.clientHeight || 600;
+        container.innerHTML = "";
+        const { nodes, edges } = generateGraphData(width, height);
+        const svg = d3.select(container)
+          .append("svg")
+          .attr("width", width)
+          .attr("height", height);
+        svg.selectAll("line").data(edges).enter().append("line")
+          .attr("x1", d => nodes[d.from].x)
+          .attr("y1", d => nodes[d.from].y)
+          .attr("x2", d => nodes[d.to].x)
+          .attr("y2", d => nodes[d.to].y)
+          .style("stroke", "#aaa");
+        svg.selectAll("circle").data(nodes).enter().append("circle")
+          .attr("cx", d => d.x)
+          .attr("cy", d => d.y)
+          .attr("r", 8)
+          .style("fill", "#69b3a2");
+        return svg;
+      }
+
+      function renderFinalVis() {
+        const container = document.getElementById("vis-container");
+        container.innerHTML = "";
+        const { nodes, edges } = generateGraphData();
+        return new vis.Network(
+          container,
+          { nodes: new vis.DataSet(nodes), edges: new vis.DataSet(edges) },
+          { physics: true, layout: { improvedLayout: false } }
+        );
+      }
+
+      function renderFinalSigma() {
+        const container = document.getElementById("sigma-container");
+        const graph = new graphology.Graph({ multi: true });
+        const { nodes, edges } = generateGraphData();
+        let canvasSize = container.getBoundingClientRect();
+        const { width, height } = canvasSize;
+        nodes.forEach((node) => graph.addNode(node.id, { label: node.label, x: Math.random() * width, y: Math.random() * height }));
+        edges.forEach((edge, index) => graph.addEdge(edge.from, edge.to));
+        const sigma = new Sigma(graph, container);
+        return sigma;
+      }
+
+      function renderFinalThree() {
+          const container = document.getElementById("three-container");
+          container.innerHTML = ""; 
+
+          const width = container.clientWidth || 800;
+          const height = container.clientHeight || 600;
+          const { nodes, edges } = generateGraphData(width, height);
+
+          const scene = new THREE.Scene();
+          const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
+          camera.position.z = Math.max(width, height) * 0.75;
+
+          const renderer = new THREE.WebGLRenderer({ antialias: true });
+          renderer.setSize(width, height);
+          container.appendChild(renderer.domElement);
+
+
+          const offsetX = width / 2;
+          const offsetY = height / 2;
+
+          const nodeGeometry = new THREE.SphereGeometry(5, 16, 16);
+          const nodeMaterial = new THREE.MeshBasicMaterial({ color: 0x69b3a2 });
+          nodes.forEach((node) => {
+            const sphere = new THREE.Mesh(nodeGeometry, nodeMaterial);
+            sphere.position.set(node.x - offsetX, node.y - offsetY, 0);
+            scene.add(sphere);
+          });
+
+          const edgeMaterial = new THREE.LineBasicMaterial({ color: 0xaaaaaa });
+          edges.forEach((edge) => {
+            const from = nodes[edge.from];
+            const to = nodes[edge.to];
+            const points = [
+              new THREE.Vector3(from.x - offsetX, from.y - offsetY, 0),
+              new THREE.Vector3(to.x - offsetX, to.y - offsetY, 0)
+            ];
+            const geometry = new THREE.BufferGeometry().setFromPoints(points);
+            const line = new THREE.Line(geometry, edgeMaterial);
+            scene.add(line);
+          });
+
+          renderer.render(scene, camera);
+
+
+          return { scene, camera, renderer, dispose: () => {
+            nodeGeometry.dispose();
+            nodeMaterial.dispose();
+            edgeMaterial.dispose();
+            renderer.dispose();
+            container.removeChild(renderer.domElement);
+          }};
+        }
+
+
+      function renderFinalCytoscape() {
+        const container = document.getElementById("cytoscape-container");
+        container.innerHTML = "";
+        const { nodes, edges } = generateGraphData();
+        const elements = [
+          ...nodes.map((node) => ({ data: { id: node.id.toString(), label: node.label } })),
+          ...edges.map((edge, index) => ({
+            data: { id: `edge-${index}`, source: edge.from.toString(), target: edge.to.toString() },
+          })),
+        ];
+        return cytoscape({
+          container: container,
+          elements: elements,
+          style: [
+            {
+              selector: "node",
+              style: {
+                "background-color": "#0074D9",
+                label: "data(label)",
+                "text-valign": "center",
+                color: "#fff",
+              },
+            },
+            {
+              selector: "edge",
+              style: { width: 2, "line-color": "#aaa" },
+            },
+          ],
+          layout: { name: "random" },
+        });
+      }
+
+      function renderFinalECharts() {
+        const container = document.getElementById("echarts-container");
+        container.innerHTML = "";
+        const { nodes, edges } = generateGraphData();
+        const echartsNodes = nodes.map((node) => ({
+          id: node.id.toString(),
+          name: node.label,
+          x: Math.random() * 500,
+          y: Math.random() * 500,
+          symbolSize: 10,
+        }));
+        const echartsEdges = edges.map((edge, index) => ({
+          id: `edge-${index}`,
+          source: edge.from.toString(),
+          target: edge.to.toString(),
+        }));
+        const chart = echarts.init(container);
+        const option = {
+          tooltip: {},
+          series: [
+            {
+              type: "graph",
+              layout: "none",
+              data: echartsNodes,
+              edges: echartsEdges,
+              roam: true,
+              label: { show: true },
+              lineStyle: { color: "#aaa", width: 2 },
+            },
+          ],
+        };
+        chart.setOption(option);
+        return chart;
+      }
+
+      function renderFinalG6() {
+  const container = document.getElementById("g6-container");
+  container.innerHTML = "";
+  const width = container.clientWidth || 800;
+  const height = container.clientHeight || 600;
+
+  
+
+  const ICON_MAP = {
+  error: '&#10060;',
+  overload: '&#9889;',
+  running: '&#9989;',
+};
+
+const COLOR_MAP = {
+  error: '#f5222d',
+  overload: '#faad14',
+  running: '#52c41a',
+};
+
+const graph = new G6.Graph({
+  container: 'g6-container',
+  data: {
+    nodes: [
+      { id: 'node-1', data: { location: 'East', status: 'error', ip: '192.168.1.2' } },
+      { id: 'node-2', data: { location: 'West', status: 'overload', ip: '192.168.1.3' } },
+      { id: 'node-3', data: { location: 'South', status: 'running', ip: '192.168.1.4' } },
+    ],
+  },
+  node: {
+    type: 'html',
+    style: {
+      size: [240, 80],
+      dx: -120,
+      dy: -40,
+      innerHTML: (d) => {
+        const {
+          data: { location, status, ip },
+        } = d;
+        const color = COLOR_MAP[status];
+
+        return `
+<div 
+  style="
+    width:100%; 
+    height: 100%; 
+    background: ${color}bb; 
+    border: 1px solid ${color};
+    color: #fff;
+    user-select: none;
+    display: flex; 
+    padding: 10px;
+    "
+>
+  <div style="display: flex;flex-direction: column;flex: 1;">
+    <div style="font-weight: bold;">
+      ${location} Node
+    </div>
+    <div>
+      status: ${status} ${ICON_MAP[status]}
+    </div>
+  </div>
+  <div>
+    <span style="border: 1px solid white; padding: 2px;">
+      ${ip}
+    </span>
+  </div>
+</div>`;
+      },
+    },
+  },
+  layout: {
+    type: 'grid',
+  },
+  behaviors: ['drag-element', 'zoom-canvas'],
+});
+
+graph.render();
+
+  return graph;
+}
+
+
+
+
+      async function runBenchmarks() {
+        iterationOrder = [];
+        NUM_NODES = parseInt(document.getElementById("node-count").value);
+        NUM_EDGES = parseInt(document.getElementById("edge-count").value);
+        const tries = parseInt(document.getElementById("tries-count").value) || 1;
+        const counterDisplay = document.getElementById("iteration-counter");
+
+        finalD3 != null ? finalD3.remove() : null;
+        finalVis != null ? finalVis.destroy() : null;
+        finalSigma != null ? finalSigma.kill() : null;
+        finalThree != null ? finalThree.dispose() : null;
+        finalCytoscape != null ? finalCytoscape.destroy() : null;
+        finalECharts != null ? finalECharts.dispose() : null;
+        finalG6 != null ? finalG6.destroy() : null;
+        finalD3 = finalVis = finalSigma = finalThree = finalCytoscape = finalECharts = finalG6 = null;
+
+        console.log("Running benchmarks...");
+
+        let d3Times = [], visTimes = [], sigmaTimes = [], threeTimes = [],
+            cytoscapeTimes = [], echartsTimes = [], g6Times = [];
+        let d3Sum = 0, visSum = 0, sigmaSum = 0, threeSum = 0,
+            cytoscapeSum = 0, echartsSum = 0, g6Sum = 0;
+
+        for (let i = 0; i < tries; i++) {
+          counterDisplay.innerText = `Iteration ${i + 1} of ${tries}`;
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          console.log(`Iteration ${i + 1} of ${tries}...`);
+
+          const benchmarks = [
+            { name: 'd3', func: benchmarkD3 },
+            { name: 'vis', func: benchmarkVis },
+            { name: 'sigma', func: benchmarkSigma },
+            { name: 'three', func: benchmarkThree },
+            { name: 'cytoscape', func: benchmarkCytoscape },
+            { name: 'echarts', func: benchmarkECharts },
+            { name: 'g6', func: benchmarkG6 }
+          ];
+
+          for (let j = benchmarks.length - 1; j > 0; j--) {
+            const k = Math.floor(Math.random() * (j + 1));
+            [benchmarks[j], benchmarks[k]] = [benchmarks[k], benchmarks[j]];
+          }
+
+          for (const bench of benchmarks) {
+            const time = await bench.func();
+            increaseTimesCalled(benchmarks, bench.name);
+            switch (bench.name) {
+              case 'd3':
+                d3Sum += time;
+                d3Times.push(time);
+                break;
+              case 'vis':
+                visSum += time;
+                visTimes.push(time);
+                break;
+              case 'sigma':
+                sigmaSum += time;
+                sigmaTimes.push(time);
+                break;
+              case 'three':
+                threeSum += time;
+                threeTimes.push(time);
+                break;
+              case 'cytoscape':
+                cytoscapeSum += time;
+                cytoscapeTimes.push(time);
+                break;
+              case 'echarts':
+                echartsSum += time;
+                echartsTimes.push(time);
+                break;
+              case 'g6':
+                g6Sum += time;
+                g6Times.push(time);
+                break;
+            }
+          }
+          console.log("Iteration complete with order: ", benchmarks.map(b => b.name));
+        }
+
+        const d3Avg = d3Sum / tries;
+        const visAvg = visSum / tries;
+        const sigmaAvg = sigmaSum / tries;
+        const threeAvg = threeSum / tries;
+        const cytoscapeAvg = cytoscapeSum / tries;
+        const echartsAvg = echartsSum / tries;
+        const g6Avg = g6Sum / tries;
+
+        console.log(`D3.js Average Render Time: ${d3Avg.toFixed(2)} ms`);
+        console.log(`Vis.js Average Render Time: ${visAvg.toFixed(2)} ms`);
+        console.log(`Sigma.js Average Render Time: ${sigmaAvg.toFixed(2)} ms`);
+        console.log(`Three.js Average Render Time: ${threeAvg.toFixed(2)} ms`);
+        console.log(`Cytoscape.js Average Render Time: ${cytoscapeAvg.toFixed(2)} ms`);
+        console.log(`ECharts Average Render Time: ${echartsAvg.toFixed(2)} ms`);
+        console.log(`G6 Average Render Time: ${g6Avg.toFixed(2)} ms`);
+
+        counterDisplay.innerText = "Benchmark complete";
+        console.log(iterationOrder);
+
+        const ctx = document.getElementById("benchmarkChart").getContext("2d");
+        if (chartInstance) { chartInstance.destroy(); }
+        chartInstance = new Chart(ctx, {
+          type: "bar",
+          data: {
+            labels: [
+              "D3.js", "Vis.js", "Sigma.js", "Three.js",
+              "Cytoscape.js", "ECharts", "G6"
+            ],
+            datasets: [{
+              label: "Average Render Time (ms)",
+              data: [d3Avg, visAvg, sigmaAvg, threeAvg, cytoscapeAvg, echartsAvg, g6Avg],
+              backgroundColor: ["blue", "red", "green", "purple", "orange", "teal", "magenta"],
+            }],
+          },
+          options: {
+            responsive: true,
+            scales: { y: { beginAtZero: true } },
+          },
+        });
+
+
+        finalD3 = renderFinalD3();
+        finalVis = renderFinalVis();
+        finalSigma = renderFinalSigma();
+        finalThree = renderFinalThree();
+        finalCytoscape = renderFinalCytoscape();
+        finalECharts = renderFinalECharts();
+        finalG6 = renderFinalG6();
+
+        callOrderRenderer();
+
+        const d3Stats = calculateStats(d3Times);
+        const visStats = calculateStats(visTimes);
+        const sigmaStats = calculateStats(sigmaTimes);
+        const threeStats = calculateStats(threeTimes);
+        const cytoscapeStats = calculateStats(cytoscapeTimes);
+        const echartsStats = calculateStats(echartsTimes);
+        const g6Stats = calculateStats(g6Times);
+
+        const librariesStats = [
+          { name: "D3.js", stats: d3Stats },
+          { name: "Vis.js", stats: visStats },
+          { name: "Sigma.js", stats: sigmaStats },
+          { name: "Three.js", stats: threeStats },
+          { name: "Cytoscape.js", stats: cytoscapeStats },
+          { name: "ECharts", stats: echartsStats },
+          { name: "G6", stats: g6Stats }
+        ];
+
+        const highestMax = librariesStats.reduce((max, lib) => lib.stats.max > max.stats.max ? lib : max, librariesStats[0]);
+        const lowestStdDev = librariesStats.reduce((min, lib) => lib.stats.stdDev < min.stats.stdDev ? lib : min, librariesStats[0]);
+
+        let statsHTML = '<h2 class="text-lg font-bold mb-2">Benchmark Statistics</h2>';
+        statsHTML += '<table class="min-w-full border-collapse border border-gray-300">';
+        statsHTML += `<tr>
+          <th class="border border-gray-300 px-2 py-1">Library</th>
+          <th class="border border-gray-300 px-2 py-1">n</th>
+          <th class="border border-gray-300 px-2 py-1">Avg (ms)</th>
+          <th class="border border-gray-300 px-2 py-1">Median (ms)</th>
+          <th class="border border-gray-300 px-2 py-1">Std Dev (ms)</th>
+          <th class="border border-gray-300 px-2 py-1">95% CI Lower</th>
+          <th class="border border-gray-300 px-2 py-1">95% CI Upper</th>
+          <th class="border border-gray-300 px-2 py-1">Q1 (ms)</th>
+          <th class="border border-gray-300 px-2 py-1">Q3 (ms)</th>
+          <th class="border border-gray-300 px-2 py-1">Min (ms)</th>
+          <th class="border border-gray-300 px-2 py-1">Max (ms)</th>
+        </tr>`;
+
+        librariesStats.forEach(lib => {
+          statsHTML += `<tr>
+              <td class="border border-gray-300 px-2 py-1">${lib.name}</td>
+              <td class="border border-gray-300 px-2 py-1">${lib.stats.n}</td>
+              <td class="border border-gray-300 px-2 py-1">${lib.stats.avg.toFixed(2)}</td>
+              <td class="border border-gray-300 px-2 py-1">${lib.stats.median.toFixed(2)}</td>
+              <td class="border border-gray-300 px-2 py-1">${lib.stats.stdDev.toFixed(2)}</td>
+              <td class="border border-gray-300 px-2 py-1">${isNaN(lib.stats.ciLower) ? "N/A" : lib.stats.ciLower.toFixed(2)}</td>
+              <td class="border border-gray-300 px-2 py-1">${isNaN(lib.stats.ciUpper) ? "N/A" : lib.stats.ciUpper.toFixed(2)}</td>
+              <td class="border border-gray-300 px-2 py-1">${lib.stats.q1.toFixed(2)}</td>
+              <td class="border border-gray-300 px-2 py-1">${lib.stats.q3.toFixed(2)}</td>
+              <td class="border border-gray-300 px-2 py-1">${lib.stats.min.toFixed(2)}</td>
+              <td class="border border-gray-300 px-2 py-1">${lib.stats.max.toFixed(2)}</td>
+            </tr>`;
+        });
+        statsHTML += '</table>';
+        statsHTML += `<p class="mt-4"><strong>Highest Max Render Time:</strong> ${highestMax.name} (${highestMax.stats.max.toFixed(2)} ms)</p>`;
+        statsHTML += `<p><strong>Lowest Standard Deviation:</strong> ${lowestStdDev.name} (${lowestStdDev.stats.stdDev.toFixed(2)} ms)</p>`;
+
+        document.getElementById("statsTable").innerHTML = statsHTML;
+      }
+
+      function callOrderRenderer(){
+        const positions = Array.from({ length: iterationOrder.length }, (_, i) => i);
+        const labels = iterationOrder.map(bench => bench.name);
+        const colors = ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40', '#C9CBCF'];
+
+        const datasets = positions.map((pos, idx) => {
+          return {
+            label: `Position ${pos + 1}`,
+            data: iterationOrder.map(bench => {
+              const record = bench.called.find(x => x.place === pos);
+              return record ? record.times : 0;
+            }),
+            backgroundColor: colors[idx]
+          };
+        });
+
+        const ctx2 = document.getElementById("callOrderChart").getContext("2d");
+        if (chartInstance2) { chartInstance2.destroy(); }
+        chartInstance2 = new Chart(ctx2, {
+          type: 'bar',
+          data: {
+            labels: labels,
+            datasets: datasets
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              title: {
+                display: true,
+                text: 'Call Order Frequency per Benchmark'
+              },
+            },
+            scales: {
+              x: { stacked: true },
+              y: { stacked: true, beginAtZero: true }
+            }
+          }
+        });
+      }
+
+      function increaseTimesCalled(benchmarks, name){
+        const indexCalledInIteration = benchmarks.findIndex(x => x.name === name);
+        const index = iterationOrder.findIndex(x => x.name === name);
+        if(index === -1){
+          let called = [{place: indexCalledInIteration, times: 1}];
+          iterationOrder.push({name: name, called: called});
+        } else {
+          let called = iterationOrder[index].called;
+          let indexCalled = called.findIndex(x => x.place === indexCalledInIteration);
+          if(indexCalled === -1){
+            called.push({place: indexCalledInIteration, times: 1});
+          } else {
+            called[indexCalled].times++;
+          }
+          iterationOrder[index].called = called;
+        }
+      }
+    </script>
+  </body>
+</html>
